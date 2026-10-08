@@ -1,3 +1,8 @@
 clip,A,B,C,verdict,reason,correct_decision
 t2t-1,0.0140,0.0009,1.0000,reject,weakest check: bin_present,reject
 t2t-2,0.9844,0.9805,1.0000,approve,,approve
+t2t-3,0.0052,0.0110,1.0000,reject,weakest check: has_object,
+t2t-4,0.8438,0.9805,0.5000,manual_review,,
+t2t-5,0.9062,0.9961,1.0000,approve,,
+t2t-6,0.9922,0.1069,1.0000,reject,weakest check: bin_present,
+t2t-7,1.0000,0.9688,0.8000,approve,,

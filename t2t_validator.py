@@ -171,7 +171,7 @@ class ClipScorer:
             "has_object": {
                 "holding": ["a hand holding an object", "a hand holding a piece of trash"],
                 "empty": ["an empty hand", "an open palm with nothing in it"],
-                "no_hand": ["a floor", "a wall", "a dustbin with no hand in view"]
+                "no_hand": ["a floor", "a wall"] # removed "a dustbin with no hand in view"
             },
             "bin_present": {
                 "pos": ["a dustbin", "a trash can", "a garbage bin", "a waste container"],
@@ -257,6 +257,7 @@ class ClipScorer:
         self.last_hand_crop = get_padded_hand_crop(image, box)
         
         import math
+        # ensure finger-extension distances use pixel coordinates (x*w, y*h) not normalized values
         def dist(lm1, lm2):
             return math.hypot((lm1.x * w) - (lm2.x * w), (lm1.y * h) - (lm2.y * h))
             
@@ -338,6 +339,7 @@ def main():
             print(f"Hand detected at: {box}")
             
             import math
+            # ensure finger-extension distances use pixel coordinates (x*w, y*h) not normalized values
             def dist(lm1, lm2):
                 return math.hypot((lm1.x * w) - (lm2.x * w), (lm1.y * h) - (lm2.y * h))
                 

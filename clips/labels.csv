@@ -1,3 +1,8 @@
 clip,has_object_f1,bin_present_f2,hand_empty_f2,correct_decision
 t2t-1,no,no,yes,reject
 t2t-2,yes,yes,yes,approve
+t2t-3,,,,
+t2t-4,,,,
+t2t-5,,,,
+t2t-6,,,,
+t2t-7,,,,

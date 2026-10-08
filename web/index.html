@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>T2T Validation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Camera view container -->
+  <div id="camera-container" class="hidden">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    
+    <div class="top-bar">
+      <button id="btn-close" class="btn-icon" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+      <div class="progress-bar-container">
+        <div class="progress-segment" id="seg-1"></div>
+        <div class="progress-segment" id="seg-2"></div>
+        <div class="progress-segment" id="seg-3"></div>
+        <div class="progress-segment" id="seg-4"></div>
+      </div>
+      <div class="step-text" id="step-text">1 / 4</div>
+    </div>
+    
+    <div id="prompt-pill" class="prompt-pill">
+      <div id="prompt-title" class="prompt-title">Point at the bin and tap it</div>
+      <div id="prompt-secondary" class="prompt-secondary">Keep the whole bin in view</div>
+    </div>
+    
+    <div id="warnings" class="warnings">
+      <div id="warn-dark" class="warning-pill hidden">Too dark</div>
+      <div id="warn-blurry" class="warning-pill hidden">Blurry</div>
+    </div>
+    
+    <!-- Phase 1 -->
+    <div id="phase-1-ui" class="phase-ui">
+      <div class="bottom-caption">Tap the bin on screen to continue</div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div id="phase-2-ui" class="phase-ui hidden">
+      <svg class="frame-guide-ring" width="150" height="150" viewBox="0 0 150 150">
+        <circle class="ring-track" cx="75" cy="75" r="64" />
+        <circle id="p2-ring-progress" class="ring-progress" cx="75" cy="75" r="64" />
+      </svg>
+      <div class="bottom-caption">Hold still</div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div id="phase-3-ui" class="phase-ui hidden">
+      <div class="bottom-area">
+        <div id="done-caption" class="btn-caption">Done unlocks after 1 second</div>
+        <button id="btn-done" class="btn-primary" disabled>Done</button>
+      </div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div id="phase-4-ui" class="phase-ui hidden">
+      <div id="debug-gates" class="debug-gates hidden">
+        <div class="chip" id="gate-size">Size</div>
+        <div class="chip" id="gate-inside">Whole hand</div>
+        <div class="chip" id="gate-open">Fingers open</div>
+        <div class="chip" id="gate-steady">Steady</div>
+        <div class="chip" id="gate-offbin">Off bin</div>
+      </div>
+      <div class="bottom-area">
+        <button id="btn-manual-capture" class="btn-primary hidden">Capture</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Start Screen -->
+  <div id="screen-start" class="screen full-screen">
+    <div class="center-content">
+      <h1 class="title">T2T Validation</h1>
+      <div id="debug-controls" class="hidden" style="margin-top:20px; text-align:left; width: 100%;">
+        <label style="color:var(--secondary); font-size:14px; margin-bottom:8px; display:block;">Test type:</label>
+        <select id="test-type" class="dropdown">
+          <option value="real_disposal">Real disposal</option>
+          <option value="pretend_drop">Pretend drop with empty hand</option>
+          <option value="phone_or_non_trash">Phone or non-trash in hand</option>
+          <option value="no_bin">No bin in frame</option>
+          <option value="pulled_back">Item pulled back out</option>
+          <option value="dropped_floor">Item dropped on floor</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <button id="btn-start" class="btn-primary" style="margin-top: 40px;">Start</button>
+    </div>
+  </div>
+
+  <!-- Error Screen -->
+  <div id="screen-error" class="screen full-screen hidden">
+    <div class="center-content">
+      <h1 class="title">Camera Error</h1>
+      <p id="error-message" class="subtitle">Please allow camera access to continue.</p>
+      <button onclick="location.reload()" class="btn-primary" style="margin-top: 40px;">Try again</button>
+    </div>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="screen-loading" class="screen overlay hidden">
+    <div class="spinner"></div>
+    <div class="prompt-title" style="margin-top: 24px; text-align: center; color: white;">Checking your submission</div>
+  </div>
+
+  <!-- Result Screen -->
+  <div id="screen-result" class="screen full-screen hidden">
+    <div class="center-content">
+      <div id="res-icon-container" class="res-icon"></div>
+      <h1 id="res-title" class="title" style="margin-top: 24px;"></h1>
+      <p id="res-subtitle" class="subtitle"></p>
+      <pre id="res-debug" class="debug-pre hidden"></pre>
+    </div>
+    <div class="bottom-area fixed">
+      <button id="btn-res-primary" class="btn-primary">Finish</button>
+      <button id="btn-res-secondary" class="btn-text">Record another</button>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
