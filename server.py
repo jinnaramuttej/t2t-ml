@@ -206,7 +206,7 @@ def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: b
             })
             
     payload = {
-        "model": "llama-3.2-90b-vision-preview",
+        "model": "qwen/qwen3.8-27b",
         "temperature": 0.0,
         "messages": [
             {
