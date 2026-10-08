@@ -10,6 +10,8 @@ from typing import Optional
 
 from fastapi import FastAPI, File, UploadFile, Form, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from PIL import Image
 
@@ -22,6 +24,7 @@ app = FastAPI()
 T2T_TOKEN = os.getenv("T2T_TOKEN", "")
 DEBUG_TOKEN = os.getenv("DEBUG_TOKEN", "")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "")
+DEDUP = os.getenv("DEDUP", "1")
 
 if ALLOWED_ORIGINS:
     origins = [orig.strip() for orig in ALLOWED_ORIGINS.split(",") if orig.strip()]
@@ -35,6 +38,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"REJECTED: Unhandled exception - {str(exc)}")
+    return JSONResponse(status_code=500, content={"message": "Internal server error"})
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    print(f"REJECTED: {exc.detail}")
+    return JSONResponse(status_code=exc.status_code, content={"message": exc.detail})
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    print(f"REJECTED: Validation error - {str(exc)}")
+    return JSONResponse(status_code=422, content={"message": "Invalid request parameters"})
 
 # In-memory sessions
 sessions = {}
@@ -109,6 +127,24 @@ def get_crop(image: Image.Image, tap_x: float, tap_y: float) -> Image.Image:
     
     return image.crop((left, top, right, bottom))
 
+def score_frames(img1, img2, tap_x, tap_y):
+    A = scorer.has_object(img1)
+    
+    if tap_x is not None and tap_y is not None:
+        img1_crop = get_crop(img1, tap_x, tap_y)
+        B = scorer.bin_present(img1_crop)
+    else:
+        B = scorer.bin_present(img1)
+        
+    C = scorer.hand_empty(img2)
+    
+    # Log only
+    B_full1 = scorer.bin_present(img1)
+    B_full2 = scorer.bin_present(img2)
+    item_still_in_hand = scorer.has_object(img2)
+    
+    return A, B, C, B_full1, B_full2, item_still_in_hand
+
 @app.post("/validate")
 async def validate(
     request: Request,
@@ -126,6 +162,7 @@ async def validate(
 ):
     # Session validation
     now = time.time()
+    start_time = now
     if session_id not in sessions:
         raise HTTPException(status_code=400, detail="Unknown or missing session ID")
     
@@ -171,37 +208,33 @@ async def validate(
         device = request.headers.get("user-agent", "")
 
     # Scoring
-    A = scorer.has_object(img1)
-    
-    if tap_x is not None and tap_y is not None:
-        img1_crop = get_crop(img1, tap_x, tap_y)
-        B = scorer.bin_present(img1_crop)
-    else:
-        B = scorer.bin_present(img1)
-        
-    C = scorer.hand_empty(img2)
-    
-    # Log only
-    B_full1 = scorer.bin_present(img1)
-    B_full2 = scorer.bin_present(img2)
-    item_still_in_hand = scorer.has_object(img2)
+    A, B, C, B_full1, B_full2, item_still_in_hand = score_frames(img1, img2, tap_x, tap_y)
     
     # Duplicates handling
     hashes_path = "submissions/hashes.json"
+    is_dup = False
+    
     try:
         with open(hashes_path, "r") as f:
-            persisted_hashes_hex = json.load(f)
-        persisted_hashes = [imagehash.hex_to_hash(h) for h in persisted_hashes_hex]
+            data = json.load(f)
+            
+        valid_records = []
+        for item in data:
+            if isinstance(item, dict) and now - item.get("time", 0) <= 600:
+                valid_records.append(item)
+                
+        persisted_hashes = [imagehash.hex_to_hash(r["hash"]) for r in valid_records]
     except Exception:
-        persisted_hashes_hex = []
+        valid_records = []
         persisted_hashes = []
         
-    is_dup = is_duplicate(img1, persisted_hashes)
-    
-    new_hash = imagehash.phash(img1)
-    persisted_hashes_hex.append(str(new_hash))
+    if DEDUP != "0":
+        is_dup = is_duplicate(img1, persisted_hashes)
+        
+    new_hash = str(imagehash.phash(img1))
+    valid_records.append({"hash": new_hash, "time": now})
     with open(hashes_path, "w") as f:
-        json.dump(persisted_hashes_hex, f)
+        json.dump(valid_records, f)
         
     # Decision logic
     verdict, reason = decide(A, B, C, is_dup=is_dup)
@@ -228,8 +261,12 @@ async def validate(
         else:
             message = "submission rejected"
             
-    # Storage
+    # Logging
+    elapsed = time.time() - start_time
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    print(f"[{timestamp}] session={session_id} verdict={verdict} reason='{reason}' A={A:.4f} B={B:.4f} B_full1={B_full1:.4f} B_full2={B_full2:.4f} C={C:.4f} item_still_in_hand={item_still_in_hand} is_dup={is_dup} elapsed={elapsed:.2f}s")
+    
+    # Storage
     sub_dir = f"submissions/{timestamp}_{session_id}"
     os.makedirs(sub_dir, exist_ok=True)
     img1.save(os.path.join(sub_dir, "frame1.jpg"))

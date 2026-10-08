@@ -160,7 +160,7 @@ class ClipScorer:
         
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         # Load OpenCLIP ViT-B-32, pretrained laion2b_s34b_b79k
-        model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k', device=self.device)
+        model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k', device=self.device, precision='fp32')
         self.model = model.eval()
         self.preprocess = preprocess
         self.tokenizer = open_clip.get_tokenizer('ViT-B-32')
@@ -181,7 +181,7 @@ class ClipScorer:
         
         # Cache text embeddings
         self.text_embeddings = {}
-        with self.torch.no_grad(), self.torch.amp.autocast('cuda' if self.device == 'cuda' else 'cpu'):
+        with self.torch.no_grad():
             for check_name, groups in self.phrases.items():
                 self.text_embeddings[check_name] = {}
                 for group_name, phrases in groups.items():
@@ -212,7 +212,7 @@ class ClipScorer:
         import torch.nn.functional as F
         
         image_input = self.preprocess(image).unsqueeze(0).to(self.device)
-        with self.torch.no_grad(), self.torch.amp.autocast('cuda' if self.device == 'cuda' else 'cpu'):
+        with self.torch.no_grad():
             image_features = self.model.encode_image(image_input)
             image_features = F.normalize(image_features, dim=-1)
             

@@ -20,7 +20,15 @@ const CONFIG = {
   // Warnings
   tooDarkThreshold: 40, 
   blurryThreshold: 50,
+  itemChangeMin: 8,
 };
+
+let isUploading = false;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && isUploading) {
+    alert("Keep this screen open while checking");
+  }
+});
 
 let state = {
   phase: 0,
@@ -105,6 +113,7 @@ function handleTap(e) {
   state.tapY = tapY_px / drawH;
   
   if (state.tapX >= 0 && state.tapX <= 1 && state.tapY >= 0 && state.tapY <= 1) {
+    state.baselineData = getGrayscaleData(video, 64, 113);
     setPhase(2);
   }
 }
@@ -210,6 +219,7 @@ function laplacianVariance(vid) {
 async function captureCandidates(count, delayMs, callback) {
   let bestVar = -1;
   let bestBlob = null;
+  let bestIndex = 0;
   for (let i=0; i<count; i++) {
     const canvas = document.createElement('canvas');
     let vw = video.videoWidth, vh = video.videoHeight;
@@ -224,57 +234,97 @@ async function captureCandidates(count, delayMs, callback) {
     if (variance > bestVar) {
       bestVar = variance;
       bestBlob = blob;
+      bestIndex = i;
     }
     if (delayMs > 0 && i < count - 1) {
       await new Promise(r => setTimeout(r, delayMs));
     }
   }
-  callback(bestBlob);
+  callback(bestBlob, bestIndex);
 }
 
 let capturing = false;
 
 function startPhase2() {
-  let lastGray = null;
-  let steadyStart = null;
   capturing = false;
+  let steadyStart = null;
+  let readyTapped = false;
+  
+  const ui = document.getElementById('phase-2-ui');
+  if (!document.getElementById('btn-ready')) {
+    const bottomArea = document.createElement('div');
+    bottomArea.className = 'bottom-area';
+    bottomArea.id = 'p2-bottom-area';
+    bottomArea.innerHTML = `
+      <div class="btn-caption" style="margin-bottom:12px;">Hold the item up in front of the bin, then tap Ready</div>
+      <button id="btn-ready" class="btn-primary">Ready</button>
+    `;
+    ui.appendChild(bottomArea);
+  }
+  
   const pRing = document.getElementById('p2-ring-progress');
+  const pSvg = ui.querySelector('.frame-guide-ring');
+  const p2Bottom = document.getElementById('p2-bottom-area');
+  
+  pSvg.classList.add('hidden');
+  p2Bottom.classList.remove('hidden');
+  
+  document.getElementById('btn-ready').onclick = () => {
+    readyTapped = true;
+    p2Bottom.classList.add('hidden');
+    pSvg.classList.remove('hidden');
+    steadyStart = Date.now();
+  };
   
   function loop() {
     if (state.phase !== 2) return;
-    const currentGray = getGrayscaleData(video);
-    if (lastGray) {
-      const diff = meanAbsDiff(lastGray, currentGray);
-      if (diff < CONFIG.frameSteadyMaxDiff) {
-        if (!steadyStart) steadyStart = Date.now();
-      } else {
-        steadyStart = null;
-      }
-    }
-    lastGray = currentGray;
     
     let progress = 0;
-    if (steadyStart && !capturing) {
+    if (readyTapped && steadyStart && !capturing) {
       const elapsed = Date.now() - steadyStart;
-      progress = Math.min(elapsed / CONFIG.frameSteadyDurationMs, 1);
+      progress = Math.min(elapsed / 1000, 1);
+      
       if (progress >= 1.0) {
-        capturing = true;
-        captureCandidates(3, 300, (bestBlob) => {
-          state.frame1 = bestBlob;
-          setPhase(3);
-        });
+        let currData = getGrayscaleData(video, 64, 113);
+        let baseData = state.baselineData;
+        let diffSum = 0;
+        let count = 0;
+        
+        let startY = Math.floor(113 * 0.4);
+        for(let y = startY; y < 113; y++) {
+          for(let x = 0; x < 64; x++) {
+            let idx = y * 64 + x;
+            diffSum += Math.abs(currData[idx] - baseData[idx]);
+            count++;
+          }
+        }
+        let mad = diffSum / count;
+        state.f1_change = mad;
+        
+        if (isDebug) {
+          elSub.innerText = `Diff: ${mad.toFixed(1)}`;
+        }
+        
+        if (mad < CONFIG.itemChangeMin) {
+          if (!isDebug) elSub.innerText = "Hold the item in front of the camera";
+          readyTapped = false;
+          p2Bottom.classList.remove('hidden');
+          pSvg.classList.add('hidden');
+          progress = 0;
+        } else {
+          capturing = true;
+          captureCandidates(3, 300, (bestBlob, bestIndex) => {
+            state.frame1 = bestBlob;
+            state.f1_candidate = bestIndex;
+            setPhase(3);
+          });
+        }
       }
     }
     const circ = 402;
-    pRing.style.strokeDashoffset = circ - (progress * circ);
+    if (pRing) pRing.style.strokeDashoffset = circ - (progress * circ);
     
     if (!capturing) requestAnimationFrame(loop);
-  }
-  
-  function meanAbsDiff(d1, d2) {
-    let sum = 0;
-    for(let i=0; i<d1.length; i++) sum += Math.abs(d1[i] - d2[i]);
-    return sum / d1.length;
   }
   
   loop();
@@ -336,7 +386,7 @@ function startPhase4() {
     if (capturing) return;
     capturing = true;
     state.manual = true;
-    captureCandidates(1, 0, (blob) => {
+    captureCandidates(1, 0, (blob, idx) => {
       state.frame2 = blob;
       upload();
     });
@@ -424,7 +474,7 @@ function startPhase4() {
       state.p4Progress = Math.min((Date.now() - steadyStart) / CONFIG.handSteadyDurationMs, 1);
       if (state.p4Progress >= 1.0 && !capturing) {
         capturing = true;
-        captureCandidates(3, 300, (bestBlob) => {
+        captureCandidates(3, 300, (bestBlob, bestIndex) => {
           state.frame2 = bestBlob;
           upload();
         });
@@ -440,6 +490,7 @@ function startPhase4() {
 }
 
 async function upload() {
+  isUploading = true;
   document.getElementById('screen-loading').classList.remove('hidden');
   
   let formData = new FormData();
@@ -452,29 +503,55 @@ async function upload() {
   if (state.lat) formData.append('lat', state.lat);
   if (state.lng) formData.append('lng', state.lng);
   
+  if (state.f1_change !== undefined) {
+    formData.append('f1_change', state.f1_change.toFixed(1) + "_cand" + state.f1_candidate);
+  }
+  
   if (isDebug) {
     const testType = document.getElementById('test-type').value;
     if (testType) formData.append('test_type', testType);
   }
   formData.append('device', navigator.userAgent);
   
-  let headers = { 'X-Api-Token': API_TOKEN };
+  let headers = { 
+    'X-Api-Token': API_TOKEN,
+    'Bypass-Tunnel-Reminder': 'true'
+  };
   if (isDebug) headers['X-Debug-Token'] = DEBUG_TOKEN;
   
+  let startMs = Date.now();
   try {
     const res = await fetch(`${API_BASE}/validate`, {
       method: 'POST',
       headers: headers,
       body: formData
     });
+    const elapsed = Date.now() - startMs;
+    if (!res.ok) {
+      let msg = "";
+      try { const e = await res.json(); msg = e.message; } catch(e) {}
+      throw { name: "HttpError", message: msg || res.statusText, status: res.status, elapsed };
+    }
     const data = await res.json();
     showResult(data);
   } catch (err) {
-    showResult({verdict: 'error', message: err.toString()});
+    const elapsed = err.elapsed || (Date.now() - startMs);
+    const host = new URL(API_BASE).host;
+    const isHttp = err.name === "HttpError";
+    const statusStr = isHttp ? `HTTP ${err.status}` : 'Network Error';
+    const debugMsg = `${err.name || 'Error'}: ${err.message} | ${statusStr} | ${elapsed}ms | ${host}`;
+    console.error(debugMsg);
+    
+    if (isDebug) {
+      showResult({verdict: 'error', message: debugMsg});
+    } else {
+      showResult({verdict: 'error', message: "Network problem, try again"});
+    }
   }
 }
 
 function showResult(data) {
+  isUploading = false;
   document.getElementById('screen-loading').classList.add('hidden');
   document.getElementById('screen-result').classList.remove('hidden');
   document.getElementById('camera-container').classList.add('hidden');
@@ -553,10 +630,20 @@ document.getElementById('btn-start').onclick = async () => {
     return;
   }
   
+  let startMs = Date.now();
   try {
-    let headers = {'X-Api-Token': API_TOKEN};
+    let headers = {
+      'X-Api-Token': API_TOKEN,
+      'Bypass-Tunnel-Reminder': 'true'
+    };
     if (isDebug) headers['X-Debug-Token'] = DEBUG_TOKEN;
     const res = await fetch(`${API_BASE}/session`, { method: 'POST', headers });
+    const elapsed = Date.now() - startMs;
+    if (!res.ok) {
+      let msg = "";
+      try { const e = await res.json(); msg = e.message; } catch(e) {}
+      throw { name: "HttpError", message: msg || res.statusText, status: res.status, elapsed };
+    }
     const data = await res.json();
     state.sessionId = data.session_id;
     
@@ -576,7 +663,15 @@ document.getElementById('btn-start').onclick = async () => {
     requestAnimationFrame(drawLoop);
     setPhase(1);
   } catch (err) {
-    alert("Failed to start session: " + err.message);
+    const elapsed = err.elapsed || (Date.now() - startMs);
+    const host = new URL(API_BASE).host;
+    const isHttp = err.name === "HttpError";
+    const statusStr = isHttp ? `HTTP ${err.status}` : 'Network Error';
+    const debugMsg = `${err.name || 'Error'}: ${err.message} | ${statusStr} | ${elapsed}ms | ${host}`;
+    console.error(debugMsg);
+    
+    const uiMsg = isDebug ? debugMsg : "Network problem, try again";
+    alert("Failed to start session: " + uiMsg);
     btn.disabled = false;
     btn.innerText = "Start";
   }
