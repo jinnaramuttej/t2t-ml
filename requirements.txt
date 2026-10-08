@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+requests
+torch
+torchvision
+open_clip_torch
+pillow
+imagehash
+opencv-python-headless
+python-dotenv
+mediapipe
