@@ -1,0 +1,20 @@
+{
+  "scores": {
+    "A": 0.0009904684266075492,
+    "B": 0.9943962097167969,
+    "C": 1.0,
+    "B_full1": 0.991845428943634,
+    "B_full2": 0.9220268726348877,
+    "item_still_in_hand": 0.8875489830970764
+  },
+  "verdict": "reject",
+  "test_type": null,
+  "device": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36",
+  "lat": null,
+  "lng": null,
+  "manual": false,
+  "tap_point": {
+    "x": 0.5501401725966539,
+    "y": 0.5728599486859249
+  }
+}

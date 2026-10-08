@@ -39,6 +39,7 @@ let state = {
   manual: false,
   handBox: null,
   handBoxState: false, // true=green, false=red
+  videoBlob: null,
 };
 
 const video = document.getElementById('video');
@@ -333,7 +334,31 @@ function startPhase2() {
 function startPhase3() {
   const btnDone = document.getElementById('btn-done');
   btnDone.disabled = true;
-  setTimeout(() => { btnDone.disabled = false; }, 1000);
+  
+  let recordedChunks = [];
+  try {
+    const stream = video.srcObject;
+    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      state.videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+      btnDone.disabled = false;
+      btnDone.innerText = "Done";
+    };
+    mediaRecorder.start();
+    btnDone.innerText = "Recording 1s...";
+    setTimeout(() => {
+      if (mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+    }, 1000);
+  } catch(e) {
+    console.error("MediaRecorder error", e);
+    setTimeout(() => { btnDone.disabled = false; }, 1000);
+  }
+
   btnDone.onclick = () => {
     setPhase(4);
   };
@@ -500,6 +525,9 @@ async function upload() {
   if (state.tapX !== null) formData.append('tap_x', state.tapX);
   if (state.tapY !== null) formData.append('tap_y', state.tapY);
   formData.append('manual', state.manual);
+  if (state.videoBlob) {
+    formData.append('video', state.videoBlob, 'drop.webm');
+  }
   if (state.lat) formData.append('lat', state.lat);
   if (state.lng) formData.append('lng', state.lng);
   

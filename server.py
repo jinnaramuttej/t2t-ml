@@ -5,8 +5,17 @@ import time
 import json
 import uuid
 import datetime
+import base64
+import requests
 from io import BytesIO
 from typing import Optional
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 from fastapi import FastAPI, File, UploadFile, Form, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +34,8 @@ T2T_TOKEN = os.getenv("T2T_TOKEN", "")
 DEBUG_TOKEN = os.getenv("DEBUG_TOKEN", "")
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "")
 DEDUP = os.getenv("DEDUP", "1")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 if ALLOWED_ORIGINS:
     origins = [orig.strip() for orig in ALLOWED_ORIGINS.split(",") if orig.strip()]
@@ -145,12 +156,88 @@ def score_frames(img1, img2, tap_x, tap_y):
     
     return A, B, C, B_full1, B_full2, item_still_in_hand
 
+def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: bytes) -> bool:
+    if not GROQ_API_KEY:
+        print("Warning: GROQ_API_KEY is not set.")
+        return True
+        
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    images_content = []
+    
+    if video_bytes:
+        import tempfile
+        import cv2
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_video:
+            temp_video.write(video_bytes)
+            temp_video_path = temp_video.name
+            
+        cap = cv2.VideoCapture(temp_video_path)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_count > 0:
+            indices = [0, frame_count // 2, frame_count - 1]
+            for idx in indices:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if ret:
+                    frame = cv2.resize(frame, (512, 512))
+                    _, buffer = cv2.imencode('.jpg', frame)
+                    b64 = base64.b64encode(buffer).decode('utf-8')
+                    images_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{b64}"
+                        }
+                    })
+        cap.release()
+        os.remove(temp_video_path)
+        
+    if not images_content:
+        for fb in [img1_bytes, img2_bytes]:
+            b64 = base64.b64encode(fb).decode('utf-8')
+            images_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{b64}"
+                }
+            })
+            
+    payload = {
+        "model": "llama-3.2-90b-vision-preview",
+        "temperature": 0.0,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Here are frames from a trash disposal validation system showing a drop action. Did the trash successfully go into the bin, or did it miss and fall on the floor outside the bin? Reply ONLY with 'IN_BIN' or 'MISSED'."
+                    }
+                ] + images_content
+            }
+        ]
+    }
+    
+    try:
+        resp = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        answer = resp.json()["choices"][0]["message"]["content"].strip().upper()
+        print(f"VLM response: {answer}")
+        return "MISSED" not in answer
+    except Exception as e:
+        print(f"VLM check failed: {e}")
+        return True
+
 @app.post("/validate")
 async def validate(
     request: Request,
     session_id: str = Form(...),
     frame1: UploadFile = File(...),
     frame2: UploadFile = File(...),
+    video: Optional[UploadFile] = File(None),
     tap_x: Optional[float] = Form(None),
     tap_y: Optional[float] = Form(None),
     manual: bool = Form(False),
@@ -158,6 +245,7 @@ async def validate(
     device: Optional[str] = Form(None),
     lat: Optional[float] = Form(None),
     lng: Optional[float] = Form(None),
+    f1_change: Optional[str] = Form(None),
     x_debug_token: Optional[str] = Header(None)
 ):
     # Session validation
@@ -181,6 +269,10 @@ async def validate(
     # File validation
     f1_bytes = await frame1.read()
     f2_bytes = await frame2.read()
+    v_bytes = None
+    if video:
+        v_bytes = await video.read()
+    
     
     if len(f1_bytes) > 1.5 * 1024 * 1024 or len(f2_bytes) > 1.5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (>1.5MB)")
@@ -239,6 +331,15 @@ async def validate(
     # Decision logic
     verdict, reason = decide(A, B, C, is_dup=is_dup)
     
+    # Run VLM check if CLIP approved
+    vlm_passed = True
+    if verdict == "approve":
+        print("Running VLM check...")
+        vlm_passed = run_vlm_check(v_bytes, f1_bytes, f2_bytes)
+        if not vlm_passed:
+            verdict = "reject"
+            reason = "missed bin (VLM)"
+    
     if manual and verdict == "approve":
         verdict = "manual_review"
         reason = "manual review requested"
@@ -264,7 +365,8 @@ async def validate(
     # Logging
     elapsed = time.time() - start_time
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    print(f"[{timestamp}] session={session_id} verdict={verdict} reason='{reason}' A={A:.4f} B={B:.4f} B_full1={B_full1:.4f} B_full2={B_full2:.4f} C={C:.4f} item_still_in_hand={item_still_in_hand} is_dup={is_dup} elapsed={elapsed:.2f}s")
+    f1_chg_log = f" f1_change={f1_change}" if f1_change else ""
+    print(f"[{timestamp}] session={session_id} verdict={verdict} reason='{reason}' A={A:.4f} B={B:.4f} B_full1={B_full1:.4f} B_full2={B_full2:.4f} C={C:.4f} item_still_in_hand={item_still_in_hand} is_dup={is_dup}{f1_chg_log} elapsed={elapsed:.2f}s")
     
     # Storage
     sub_dir = f"submissions/{timestamp}_{session_id}"
@@ -287,7 +389,9 @@ async def validate(
         "lat": lat,
         "lng": lng,
         "manual": manual,
-        "tap_point": {"x": tap_x, "y": tap_y}
+        "tap_point": {"x": tap_x, "y": tap_y},
+        "f1_change": f1_change,
+        "vlm_passed": vlm_passed
     }
     with open(os.path.join(sub_dir, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
