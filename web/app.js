@@ -333,34 +333,44 @@ function startPhase2() {
 
 function startPhase3() {
   const btnDone = document.getElementById('btn-done');
-  btnDone.disabled = true;
+  const doneCaption = document.getElementById('done-caption');
   
-  let recordedChunks = [];
-  try {
-    const stream = video.srcObject;
-    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-    mediaRecorder.onstop = () => {
-      state.videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
-      btnDone.disabled = false;
-      btnDone.innerText = "Done";
-    };
-    mediaRecorder.start();
-    btnDone.innerText = "Recording 1s...";
-    setTimeout(() => {
-      if (mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-      }
-    }, 1000);
-  } catch(e) {
-    console.error("MediaRecorder error", e);
-    setTimeout(() => { btnDone.disabled = false; }, 1000);
-  }
-
+  btnDone.disabled = false;
+  btnDone.innerText = "Record Drop";
+  if (doneCaption) doneCaption.innerText = "Tap when you're ready to drop (records 2s)";
+  
   btnDone.onclick = () => {
-    setPhase(4);
+    btnDone.disabled = true;
+    if (doneCaption) doneCaption.innerText = "Recording... Drop it now!";
+    btnDone.innerText = "Recording 2s...";
+    
+    let recordedChunks = [];
+    try {
+      const stream = video.srcObject;
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        state.videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+        btnDone.disabled = false;
+        btnDone.innerText = "Next";
+        if (doneCaption) doneCaption.innerText = "Recording complete";
+        btnDone.onclick = () => setPhase(4);
+      };
+      mediaRecorder.start();
+      
+      setTimeout(() => {
+        if (mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+        }
+      }, 2000);
+    } catch(e) {
+      console.error("MediaRecorder error", e);
+      btnDone.disabled = false;
+      btnDone.innerText = "Next";
+      btnDone.onclick = () => setPhase(4);
+    }
   };
 }
 
