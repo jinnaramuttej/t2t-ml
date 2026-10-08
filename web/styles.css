@@ -340,3 +340,7 @@ body, html {
   margin-top: 24px;
   text-align: left;
 }
+
+.record-wrapper { width: 72px; height: 72px; border-radius: 36px; border: 4px solid white; display: flex; align-items: center; justify-content: center; cursor: pointer; touch-action: none; pointer-events: auto; }
+.record-inner { width: 56px; height: 56px; border-radius: 28px; background-color: #ff3b30; transition: all 0.2s ease; }
+.record-wrapper.recording .record-inner { width: 32px; height: 32px; border-radius: 8px; }

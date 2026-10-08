@@ -332,46 +332,58 @@ function startPhase2() {
 }
 
 function startPhase3() {
+  const btnWrapper = document.getElementById('record-btn-wrapper');
   const btnDone = document.getElementById('btn-done');
   const doneCaption = document.getElementById('done-caption');
   
-  btnDone.disabled = false;
-  btnDone.innerText = "Record Drop";
-  if (doneCaption) doneCaption.innerText = "Tap when you're ready to drop (records 2s)";
+  if (doneCaption) doneCaption.innerText = "Press and hold to record drop";
   
-  btnDone.onclick = () => {
-    btnDone.disabled = true;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let isRecording = false;
+
+  const startRec = (e) => {
+    e.preventDefault();
+    if (isRecording) return;
+    isRecording = true;
+    btnWrapper.classList.add('recording');
     if (doneCaption) doneCaption.innerText = "Recording... Drop it now!";
-    btnDone.innerText = "Recording 2s...";
     
-    let recordedChunks = [];
+    recordedChunks = [];
     try {
       const stream = video.srcObject;
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      mediaRecorder.ondataavailable = e => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      mediaRecorder.ondataavailable = ev => {
+        if (ev.data.size > 0) recordedChunks.push(ev.data);
       };
       mediaRecorder.onstop = () => {
         state.videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
-        btnDone.disabled = false;
-        btnDone.innerText = "Next";
+        btnWrapper.classList.add('hidden');
+        btnDone.classList.remove('hidden');
         if (doneCaption) doneCaption.innerText = "Recording complete";
         btnDone.onclick = () => setPhase(4);
       };
       mediaRecorder.start();
-      
-      setTimeout(() => {
-        if (mediaRecorder.state === "recording") {
-          mediaRecorder.stop();
-        }
-      }, 2000);
-    } catch(e) {
-      console.error("MediaRecorder error", e);
-      btnDone.disabled = false;
-      btnDone.innerText = "Next";
-      btnDone.onclick = () => setPhase(4);
+    } catch(err) {
+      console.error("MediaRecorder error", err);
+      stopRec();
     }
   };
+
+  const stopRec = (e) => {
+    if (e) e.preventDefault();
+    if (!isRecording) return;
+    isRecording = false;
+    btnWrapper.classList.remove('recording');
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+    }
+    btnWrapper.removeEventListener('pointerdown', startRec);
+    window.removeEventListener('pointerup', stopRec);
+  };
+
+  btnWrapper.addEventListener('pointerdown', startRec);
+  window.addEventListener('pointerup', stopRec);
 }
 
 let handLandmarker;
