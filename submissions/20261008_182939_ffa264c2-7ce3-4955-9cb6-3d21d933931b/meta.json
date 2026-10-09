@@ -1,0 +1,22 @@
+{
+  "scores": {
+    "A": 0.9487611055374146,
+    "B": 0.03327731415629387,
+    "C": 1.0,
+    "B_full1": 0.4695596992969513,
+    "B_full2": 0.09294538199901581,
+    "item_still_in_hand": 0.2341659665107727
+  },
+  "verdict": "reject",
+  "test_type": null,
+  "device": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36",
+  "lat": 17.5633635,
+  "lng": 78.4508109,
+  "manual": true,
+  "tap_point": {
+    "x": 0.46795476150413395,
+    "y": 0.5711592508380828
+  },
+  "f1_change": "32.4_cand1",
+  "vlm_passed": true
+}
