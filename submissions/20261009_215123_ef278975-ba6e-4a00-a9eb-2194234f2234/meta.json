@@ -1,0 +1,36 @@
+{
+  "submission_id": "20261009_215123_ef278975-ba6e-4a00-a9eb-2194234f2234",
+  "dataset_version": "v1.1",
+  "scores": {
+    "A": 1.0,
+    "B": 1.0,
+    "C": 1.0,
+    "B_full1": 1.0,
+    "B_full2": 1.0,
+    "item_still_in_hand": 0.0
+  },
+  "verdict": "manual_review",
+  "reason": "uncertain disposal (VLM)",
+  "manual_review_status": true,
+  "human_verified_label": null,
+  "test_type": null,
+  "device": "testclient",
+  "lat": null,
+  "lng": null,
+  "manual": false,
+  "tap_point": {
+    "x": null,
+    "y": null
+  },
+  "f1_change": null,
+  "vlm_passed": false,
+  "duration_ms": null,
+  "retries": null,
+  "model_id": "qwen/qwen3.8-27b",
+  "prompt_version": "1.0",
+  "sampling_strategy": null,
+  "sampled_frame_timestamps": null,
+  "vlm_verdict": "UNCERTAIN",
+  "reason_code": null,
+  "vlm_note": null
+}

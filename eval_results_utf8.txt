@@ -1,0 +1,101 @@
+
+--- Testing API Failures and Malformed Responses ---
+VLM check failed: Connection timed out
+Timeout Test -> vlm_verdict: ERROR, Note: Connection timed out...
+VLM response: This is just text, not JSON!
+Malformed JSON Test -> vlm_verdict: UNCERTAIN
+
+--- Evaluating Baseline (22 Submissions) ---
+[20261008_114801] Final: reject          VLM: N/A        Latency: 2.3s
+[20261008_114829] Final: reject          VLM: N/A        Latency: 0.5s
+[20261008_122712] Final: reject          VLM: N/A        Latency: 0.5s
+[20261008_123151] Final: reject          VLM: N/A        Latency: 0.5s
+[20261008_123545] Final: reject          VLM: N/A        Latency: 0.6s
+VLM response: {
+  "verdict": "IN_BIN",
+  "reason_code": "ITEM_ENTERED_BIN",
+  "note": "Item visible in hand, then seen inside the bin in subsequent frames."
+}
+[20261008_123635] Final: approve         VLM: IN_BIN     Latency: 2.8s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_132235] Final: approve         VLM: ERROR      Latency: 1.3s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_140713] Final: approve         VLM: ERROR      Latency: 2.9s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_141042] Final: approve         VLM: ERROR      Latency: 3.8s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_141404] Final: approve         VLM: ERROR      Latency: 2.1s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_141439] Final: approve         VLM: ERROR      Latency: 1.7s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_143335] Final: approve         VLM: ERROR      Latency: 2.1s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_143404] Final: approve         VLM: ERROR      Latency: 2.6s
+[20261008_173126] Final: reject          VLM: N/A        Latency: 0.4s
+[20261008_180532] Final: reject          VLM: N/A        Latency: 0.4s
+[20261008_181116] Final: manual_review   VLM: N/A        Latency: 0.4s
+[20261008_182844] Final: reject          VLM: N/A        Latency: 0.4s
+[20261008_182925] Final: reject          VLM: N/A        Latency: 0.4s
+[20261008_182939] Final: reject          VLM: N/A        Latency: 0.4s
+[20261008_182957] Final: reject          VLM: N/A        Latency: 0.4s
+VLM check failed: 429 Client Error: Too Many Requests for url: https://api.groq.com/openai/v1/chat/completions
+[20261008_183042] Final: approve         VLM: ERROR      Latency: 11.6s
+[20261009_183209] Final: manual_review   VLM: N/A        Latency: 0.5s
+
+--- Evaluating New Adversarial Test Set (Clips) ---
+VLM Sampling: motion_peak_5 | Indices: [0, 67, 68, 69, 115]
+  Frame 0: TS 0.0ms
+  Frame 67: TS 2198.0ms
+  Frame 68: TS 2231.2ms
+  Frame 69: TS 2264.6ms
+  Frame 115: TS 3802.1ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-1.mp4] Final: manual_review   VLM: ERROR      (Reason: None) Latency: 5.2s
+VLM Sampling: motion_peak_5 | Indices: [0, 139, 140, 141, 355]
+  Frame 0: TS 0.0ms
+  Frame 139: TS 4628.7ms
+  Frame 140: TS 4662.0ms
+  Frame 141: TS 4695.3ms
+  Frame 355: TS 11821.5ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-2.mp4] Final: approve         VLM: ERROR      (Reason: None) Latency: 8.5s
+VLM Sampling: motion_peak_5 | Indices: [0, 71, 72, 73, 109]
+  Frame 0: TS 0.0ms
+  Frame 71: TS 2333.3ms
+  Frame 72: TS 2366.7ms
+  Frame 73: TS 2400.0ms
+  Frame 109: TS 3600.0ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-3.mp4] Final: manual_review   VLM: ERROR      (Reason: None) Latency: 3.2s
+VLM Sampling: motion_peak_5 | Indices: [0, 76, 77, 78, 182]
+  Frame 0: TS 0.0ms
+  Frame 76: TS 2508.3ms
+  Frame 77: TS 2541.6ms
+  Frame 78: TS 2575.0ms
+  Frame 182: TS 6074.8ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-4.mp4] Final: manual_review   VLM: ERROR      (Reason: None) Latency: 7.6s
+VLM Sampling: motion_peak_5 | Indices: [0, 51, 52, 53, 56]
+  Frame 0: TS 0.0ms
+  Frame 51: TS 2939.9ms
+  Frame 52: TS 2998.7ms
+  Frame 53: TS 3057.5ms
+  Frame 56: TS 3233.9ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-5.mp4] Final: manual_review   VLM: ERROR      (Reason: None) Latency: 1.5s
+VLM Sampling: motion_peak_5 | Indices: [0, 76, 77, 78, 105]
+  Frame 0: TS 0.0ms
+  Frame 76: TS 3186.6ms
+  Frame 77: TS 3253.2ms
+  Frame 78: TS 3353.2ms
+  Frame 105: TS 4453.1ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-6.mp4] Final: approve         VLM: ERROR      (Reason: None) Latency: 1.8s
+VLM Sampling: motion_peak_5 | Indices: [0, 95, 96, 97, 117]
+  Frame 0: TS 0.0ms
+  Frame 95: TS 4084.1ms
+  Frame 96: TS 4184.1ms
+  Frame 97: TS 4250.8ms
+  Frame 117: TS 5050.7ms
+VLM check failed: 400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions
+[t2t-7.mp4] Final: approve         VLM: ERROR      (Reason: None) Latency: 2.3s

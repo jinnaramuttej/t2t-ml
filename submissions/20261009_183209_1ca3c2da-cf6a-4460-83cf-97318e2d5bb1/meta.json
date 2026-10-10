@@ -1,0 +1,22 @@
+{
+  "scores": {
+    "A": 0.9838129281997681,
+    "B": 0.4477144777774811,
+    "C": 1.0,
+    "B_full1": 0.9446113705635071,
+    "B_full2": 0.8461952805519104,
+    "item_still_in_hand": 0.9898742437362671
+  },
+  "verdict": "manual_review",
+  "test_type": null,
+  "device": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36",
+  "lat": null,
+  "lng": null,
+  "manual": false,
+  "tap_point": {
+    "x": 0.5848256313125866,
+    "y": 0.5103675483973958
+  },
+  "f1_change": "37.2_cand2",
+  "vlm_passed": true
+}

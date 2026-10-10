@@ -10,6 +10,8 @@ import requests
 from io import BytesIO
 from typing import Optional
 
+PROMPT_VERSION = "1.0"
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -156,10 +158,19 @@ def score_frames(img1, img2, tap_x, tap_y):
     
     return A, B, C, B_full1, B_full2, item_still_in_hand
 
-def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: bytes) -> bool:
+def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: bytes) -> dict:
+    result = {
+        "vlm_verdict": "UNCERTAIN",
+        "reason_code": None,
+        "note": None,
+        "sampling_strategy": "fallback_2_frames",
+        "sampled_frame_timestamps": []
+    }
+    
     if not GROQ_API_KEY:
         print("Warning: GROQ_API_KEY is not set.")
-        return True
+        result["vlm_verdict"] = "IN_BIN"
+        return result
         
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -175,23 +186,67 @@ def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: b
             temp_video.write(video_bytes)
             temp_video_path = temp_video.name
             
+        import numpy as np
+        
         cap = cv2.VideoCapture(temp_video_path)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if frame_count > 0:
-            indices = [0, frame_count // 2, frame_count - 1]
-            for idx in indices:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-                ret, frame = cap.read()
-                if ret:
-                    frame = cv2.resize(frame, (512, 512))
-                    _, buffer = cv2.imencode('.jpg', frame)
-                    b64 = base64.b64encode(buffer).decode('utf-8')
-                    images_content.append({
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{b64}"
-                        }
-                    })
+        raw_frames = []
+        timestamps = []
+        
+        while True:
+            pos_msec = cap.get(cv2.CAP_PROP_POS_MSEC)
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if not timestamps or pos_msec > timestamps[-1]:
+                timestamps.append(pos_msec)
+            else:
+                timestamps.append(timestamps[-1] + 33.3)
+            raw_frames.append(frame)
+            
+        n = len(raw_frames)
+        strategy = ""
+        final_indices = []
+        
+        if n > 0:
+            if n <= 3:
+                strategy = "uniform_fallback"
+                final_indices = list(range(n))
+            else:
+                diffs = [0]
+                for i in range(1, n):
+                    gray1 = cv2.cvtColor(cv2.resize(raw_frames[i-1], (128, 128)), cv2.COLOR_BGR2GRAY)
+                    gray2 = cv2.cvtColor(cv2.resize(raw_frames[i], (128, 128)), cv2.COLOR_BGR2GRAY)
+                    diffs.append(np.sum(cv2.absdiff(gray1, gray2)))
+                    
+                peak_idx = int(np.argmax(diffs))
+                candidate_indices = {
+                    max(0, peak_idx - 1): "before_peak",
+                    peak_idx: "peak_motion",
+                    min(n - 1, peak_idx + 1): "after_peak"
+                }
+                
+                final_indices = sorted(list(set([idx for idx in candidate_indices.keys() if 0 <= idx < n])))
+                if len(final_indices) < 3:
+                    final_indices = sorted(list(set([0, n // 2, n - 1])))
+                    strategy = "uniform_fallback"
+                else:
+                    strategy = "motion_peak_3"
+            
+            result["sampling_strategy"] = strategy
+            print(f"VLM Sampling: {strategy} | Indices: {final_indices}")
+            for idx in final_indices:
+                ts = timestamps[idx]
+                result["sampled_frame_timestamps"].append(ts)
+                print(f"  Frame {idx}: TS {ts:.1f}ms")
+                frame = cv2.resize(raw_frames[idx], (512, 512))
+                _, buffer = cv2.imencode('.jpg', frame)
+                b64 = base64.b64encode(buffer).decode('utf-8')
+                images_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{b64}"
+                    }
+                })
         cap.release()
         os.remove(temp_video_path)
         
@@ -205,18 +260,42 @@ def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: b
                 }
             })
             
+    system_prompt = """You are the disposal verification component of Trash2Treasure (T2T).
+
+You will receive up to 3 ordered frames extracted from a waste-disposal recording. Determine whether the waste item was successfully deposited inside the intended bin.
+
+Return ONLY one valid JSON object matching this schema:
+
+{
+  "verdict": "IN_BIN | MISSED | UNCERTAIN",
+  "reason_code": "ITEM_ENTERED_BIN | ITEM_FELL_OUTSIDE | ITEM_NOT_VISIBLE | BIN_NOT_VISIBLE | TRAJECTORY_AMBIGUOUS | OCCLUSION | INSUFFICIENT_EVIDENCE",
+  "note": "A brief factual observation, maximum 12 words."
+}
+
+Decision rules:
+- IN_BIN: Visual evidence clearly supports the item entering the bin.
+- MISSED: Visual evidence clearly shows the item falling outside the bin.
+- UNCERTAIN: The available frames do not establish either outcome.
+- Never infer successful disposal solely because the hand is empty afterward or a bin is visible.
+- Do not assume the item entered the bin merely because it disappears between frames.
+- If the item, its trajectory, or its destination is obscured or missing from the evidence, use UNCERTAIN.
+- Describe only what is visible. Do not invent events between frames.
+- Use the most specific applicable reason code. For UNCERTAIN, use the reason that best explains the missing evidence.
+- Keep the note factual, concise, and useful for debugging.
+- Do not include markdown, additional keys, or text outside the JSON object."""
+
     payload = {
         "model": "qwen/qwen3.8-27b",
         "temperature": 0.0,
+        "response_format": {"type": "json_object"},
         "messages": [
             {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Here are frames from a trash disposal validation system showing a drop action. Did the trash successfully go into the bin, or did it miss and fall on the floor outside the bin? Reply ONLY with 'IN_BIN' or 'MISSED'."
-                    }
-                ] + images_content
+                "content": images_content
             }
         ]
     }
@@ -224,12 +303,30 @@ def run_vlm_check(video_bytes: Optional[bytes], img1_bytes: bytes, img2_bytes: b
     try:
         resp = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=15)
         resp.raise_for_status()
-        answer = resp.json()["choices"][0]["message"]["content"].strip().upper()
+        answer = resp.json()["choices"][0]["message"]["content"].strip()
         print(f"VLM response: {answer}")
-        return "MISSED" not in answer
+        
+        try:
+            import json
+            clean_answer = answer
+            if clean_answer.startswith("```json"):
+                clean_answer = clean_answer[7:-3].strip()
+            elif clean_answer.startswith("```"):
+                clean_answer = clean_answer[3:-3].strip()
+            parsed = json.loads(clean_answer)
+            result["vlm_verdict"] = parsed.get("verdict", "UNCERTAIN")
+            result["reason_code"] = parsed.get("reason_code")
+            result["note"] = parsed.get("note")
+        except Exception:
+            if "IN_BIN" in answer.upper(): result["vlm_verdict"] = "IN_BIN"
+            elif "MISSED" in answer.upper(): result["vlm_verdict"] = "MISSED"
+            else: result["vlm_verdict"] = "UNCERTAIN"
     except Exception as e:
         print(f"VLM check failed: {e}")
-        return True
+        result["vlm_verdict"] = "ERROR"
+        result["note"] = str(e)
+        
+    return result
 
 @app.post("/validate")
 async def validate(
@@ -246,6 +343,8 @@ async def validate(
     lat: Optional[float] = Form(None),
     lng: Optional[float] = Form(None),
     f1_change: Optional[str] = Form(None),
+    duration_ms: Optional[int] = Form(None),
+    retries: Optional[int] = Form(None),
     x_debug_token: Optional[str] = Header(None)
 ):
     # Session validation
@@ -333,12 +432,27 @@ async def validate(
     
     # Run VLM check if CLIP approved
     vlm_passed = True
+    vlm_result = None
     if verdict == "approve":
         print("Running VLM check...")
-        vlm_passed = run_vlm_check(v_bytes, f1_bytes, f2_bytes)
-        if not vlm_passed:
+        vlm_result = run_vlm_check(v_bytes, f1_bytes, f2_bytes)
+        vlm_verdict = vlm_result.get("vlm_verdict", "UNCERTAIN")
+        if vlm_verdict == "MISSED":
+            vlm_passed = False
             verdict = "reject"
             reason = "missed bin (VLM)"
+        elif vlm_verdict == "UNCERTAIN":
+            vlm_passed = False
+            verdict = "manual_review"
+            reason = "uncertain disposal (VLM)"
+        elif vlm_verdict == "ERROR":
+            vlm_passed = False
+            verdict = "manual_review"
+            reason = "vlm processing error"
+        elif vlm_verdict != "IN_BIN":
+            vlm_passed = False
+            verdict = "manual_review"
+            reason = f"unexpected vlm verdict: {vlm_verdict}"
     
     if manual and verdict == "approve":
         verdict = "manual_review"
@@ -375,6 +489,8 @@ async def validate(
     img2.save(os.path.join(sub_dir, "frame2.jpg"))
     
     meta = {
+        "submission_id": f"{timestamp}_{session_id}",
+        "dataset_version": "v1.1",
         "scores": {
             "A": A,
             "B": B,
@@ -384,6 +500,9 @@ async def validate(
             "item_still_in_hand": item_still_in_hand
         },
         "verdict": verdict,
+        "reason": reason,
+        "manual_review_status": verdict == "manual_review",
+        "human_verified_label": None,
         "test_type": test_type,
         "device": device,
         "lat": lat,
@@ -391,8 +510,22 @@ async def validate(
         "manual": manual,
         "tap_point": {"x": tap_x, "y": tap_y},
         "f1_change": f1_change,
-        "vlm_passed": vlm_passed
+        "vlm_passed": vlm_passed,
+        "duration_ms": duration_ms,
+        "retries": retries
     }
+    
+    if vlm_result:
+        meta.update({
+            "model_id": "qwen/qwen3.8-27b",
+            "prompt_version": PROMPT_VERSION,
+            "sampling_strategy": vlm_result.get("sampling_strategy"),
+            "sampled_frame_timestamps": vlm_result.get("sampled_frame_timestamps"),
+            "vlm_verdict": vlm_result.get("vlm_verdict"),
+            "reason_code": vlm_result.get("reason_code"),
+            "vlm_note": vlm_result.get("note")
+        })
+        
     with open(os.path.join(sub_dir, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
         

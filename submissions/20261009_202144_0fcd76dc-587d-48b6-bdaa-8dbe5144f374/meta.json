@@ -1,0 +1,29 @@
+{
+  "submission_id": "20261009_202144_0fcd76dc-587d-48b6-bdaa-8dbe5144f374",
+  "dataset_version": "v1.1",
+  "scores": {
+    "A": 1.0,
+    "B": 1.0,
+    "C": 1.0,
+    "B_full1": 1.0,
+    "B_full2": 1.0,
+    "item_still_in_hand": 0.0
+  },
+  "verdict": "manual_review",
+  "reason": "reason",
+  "manual_review_status": true,
+  "human_verified_label": null,
+  "test_type": null,
+  "device": "testclient",
+  "lat": null,
+  "lng": null,
+  "manual": false,
+  "tap_point": {
+    "x": null,
+    "y": null
+  },
+  "f1_change": null,
+  "vlm_passed": true,
+  "duration_ms": null,
+  "retries": null
+}

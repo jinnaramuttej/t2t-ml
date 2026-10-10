@@ -24,6 +24,12 @@ const CONFIG = {
 };
 
 let isUploading = false;
+let retryCount = parseInt(sessionStorage.getItem('t2t_retries') || '0');
+let sessionStart = parseInt(sessionStorage.getItem('t2t_start') || Date.now().toString());
+if (!sessionStorage.getItem('t2t_start')) {
+  sessionStorage.setItem('t2t_start', sessionStart);
+}
+
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && isUploading) {
     alert("Keep this screen open while checking");
@@ -250,6 +256,7 @@ function startPhase2() {
   capturing = false;
   let steadyStart = null;
   let readyTapped = false;
+  let phase2Start = Date.now();
   
   const ui = document.getElementById('phase-2-ui');
   if (!document.getElementById('btn-ready')) {
@@ -267,8 +274,9 @@ function startPhase2() {
   const pSvg = ui.querySelector('.frame-guide-ring');
   const p2Bottom = document.getElementById('p2-bottom-area');
   
-  pSvg.classList.add('hidden');
-  p2Bottom.classList.remove('hidden');
+  pSvg.classList.remove('hidden');
+  p2Bottom.classList.add('hidden');
+  handCenterHistory = [];
   
   document.getElementById('btn-ready').onclick = () => {
     readyTapped = true;
@@ -279,18 +287,66 @@ function startPhase2() {
   
   function loop() {
     if (state.phase !== 2) return;
+    if (!handLandmarker) {
+      requestAnimationFrame(loop);
+      return;
+    }
+    
+    if (Date.now() - phase2Start > 5000 && !readyTapped) {
+      p2Bottom.classList.remove('hidden');
+    }
+    
+    let nowMs = performance.now();
+    let results = handLandmarker.detectForVideo(video, nowMs);
+    let w = video.videoWidth, h = video.videoHeight;
+    let gateGreen = false;
+    let message = "";
+    
+    if (!readyTapped) {
+      if (results.landmarks && results.landmarks.length > 0) {
+        let lms = results.landmarks[0];
+        let minX = 1, minY = 1, maxX = 0, maxY = 0;
+        lms.forEach(lm => {
+          minX = Math.min(minX, lm.x); minY = Math.min(minY, lm.y);
+          maxX = Math.max(maxX, lm.x); maxY = Math.max(maxY, lm.y);
+        });
+        
+        let cx = minX + (maxX-minX)/2, cy = minY + (maxY-minY)/2;
+        handCenterHistory.push({t: Date.now(), x: cx, y: cy});
+        handCenterHistory = handCenterHistory.filter(pt => Date.now() - pt.t <= CONFIG.handSteadyDurationMs);
+        
+        let maxDist = 0;
+        for(let pt of handCenterHistory) {
+          let d = Math.hypot(pt.x - cx, pt.y - cy);
+          if(d > maxDist) maxDist = d;
+        }
+        
+        let areaFrac = ((maxX-minX)*w * (maxY-minY)*h) / (w * h);
+        let sizeOk = areaFrac >= CONFIG.handMinAreaFraction;
+        let steady = (maxDist <= CONFIG.handSteadyMaxMoveFraction * Math.max(w, h)) && handCenterHistory.length > 10;
+        
+        if (!sizeOk) message = "Move hand closer";
+        else if (!steady) message = "Hold still";
+        else {
+          message = "";
+          gateGreen = true;
+        }
+      } else {
+        message = "Show your hand holding the item";
+        handCenterHistory = [];
+      }
+      elSub.innerText = message;
+    }
     
     let progress = 0;
-    if (readyTapped && steadyStart && !capturing) {
-      const elapsed = Date.now() - steadyStart;
-      progress = Math.min(elapsed / 1000, 1);
+    if (gateGreen || readyTapped) {
+      if (!steadyStart) steadyStart = Date.now();
+      progress = Math.min((Date.now() - steadyStart) / (readyTapped ? 1000 : CONFIG.handSteadyDurationMs), 1);
       
-      if (progress >= 1.0) {
+      if (progress >= 1.0 && !capturing) {
         let currData = getGrayscaleData(video, 64, 113);
         let baseData = state.baselineData;
-        let diffSum = 0;
-        let count = 0;
-        
+        let diffSum = 0, count = 0;
         let startY = Math.floor(113 * 0.4);
         for(let y = startY; y < 113; y++) {
           for(let x = 0; x < 64; x++) {
@@ -302,16 +358,13 @@ function startPhase2() {
         let mad = diffSum / count;
         state.f1_change = mad;
         
-        if (isDebug) {
-          elSub.innerText = `Diff: ${mad.toFixed(1)}`;
-        }
-        
-        if (mad < CONFIG.itemChangeMin) {
+        if (readyTapped && mad < CONFIG.itemChangeMin) {
           if (!isDebug) elSub.innerText = "Hold the item in front of the camera";
           readyTapped = false;
           p2Bottom.classList.remove('hidden');
           pSvg.classList.add('hidden');
           progress = 0;
+          steadyStart = null;
         } else {
           capturing = true;
           captureCandidates(3, 300, (bestBlob, bestIndex) => {
@@ -321,7 +374,10 @@ function startPhase2() {
           });
         }
       }
+    } else {
+      steadyStart = null;
     }
+    
     const circ = 402;
     if (pRing) pRing.style.strokeDashoffset = circ - (progress * circ);
     
@@ -557,6 +613,10 @@ async function upload() {
     formData.append('f1_change', state.f1_change.toFixed(1) + "_cand" + state.f1_candidate);
   }
   
+  let durationMs = Date.now() - sessionStart;
+  formData.append('duration_ms', durationMs);
+  formData.append('retries', retryCount);
+  
   if (isDebug) {
     const testType = document.getElementById('test-type').value;
     if (testType) formData.append('test_type', testType);
@@ -616,12 +676,16 @@ function showResult(data) {
   let svg = '';
   
   if (v === 'approve') {
+    sessionStorage.removeItem('t2t_retries');
+    sessionStorage.removeItem('t2t_start');
     resTitle.innerText = "Disposal verified";
     resSub.innerText = "Your submission was checked and saved.";
     svg = `<svg viewBox="0 0 24 24" fill="none" stroke="#0E1512" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" width="48" height="48"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
     btnPri.innerText = "Finish";
     btnPri.onclick = () => location.reload();
   } else if (v === 'manual_review') {
+    sessionStorage.removeItem('t2t_retries');
+    sessionStorage.removeItem('t2t_start');
     resTitle.innerText = "Sent for review";
     resSub.innerText = data.message;
     resIcon.classList.add('amber');
@@ -629,6 +693,7 @@ function showResult(data) {
     btnPri.innerText = "Finish";
     btnPri.onclick = () => location.reload();
   } else {
+    sessionStorage.setItem('t2t_retries', retryCount + 1);
     resTitle.innerText = "Submission Rejected";
     resSub.innerText = data.message;
     resIcon.classList.add('red');
